@@ -5,7 +5,7 @@ struct AppRootView: View {
 
     var body: some View {
         ZStack {
-            WriterBackdrop()
+            MacPastebinBackdrop()
 
             if appState.isLocked {
                 UnlockView()

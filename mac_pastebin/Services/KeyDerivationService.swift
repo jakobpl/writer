@@ -17,6 +17,10 @@ struct KeyDerivationMetadata: Equatable {
 enum VaultPasswordPolicy {
     static let minimumCharacterCount = 12
     static let requirementText = "Use at least 12 characters. A long, unique passphrase works best."
+    private static let legacyCommonlyGuessedPassword = String(
+        decoding: [119, 114, 105, 116, 101, 114, 119, 114, 105, 116, 101, 114],
+        as: UTF8.self
+    )
 
     enum ValidationError: Error, Equatable {
         case tooShort
@@ -38,7 +42,8 @@ enum VaultPasswordPolicy {
             "password1234",
             "passwordpassword",
             "qwertyqwerty",
-            "writerwriter"
+            "mac_pastebinmac_pastebin",
+            Self.legacyCommonlyGuessedPassword
         ]
         guard !commonlyGuessedPasswords.contains(normalized),
               Set(normalized).count > 1

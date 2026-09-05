@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -19,11 +20,11 @@ enum VaultResourcePolicy {
     static let maximumAttachmentsTotal = 256
     static let maximumImageBytes = 8 * 1_024 * 1_024
     static let maximumImageBytesTotal = 24 * 1_024 * 1_024
-    static let maximumImageDimension = 8_192
-    static let maximumImagePixels = 40_000_000
+    nonisolated static let maximumImageDimension = 8_192
+    nonisolated static let maximumImagePixels = 40_000_000
     static let maximumImagePixelsPerNote = 80_000_000
     static let maximumImagePixelsTotal = 160_000_000
-    static let maximumImageAspectRatio = 100.0
+    nonisolated static let maximumImageAspectRatio = 100.0
     static let maximumImageFrameCount = 1
 
     struct ImageMetadata: Equatable {
@@ -61,7 +62,7 @@ enum VaultResourcePolicy {
             throw ValidationError.fileIsNotRegular
         }
         guard let byteCount = (attributes[.size] as? NSNumber)?.intValue,
-              (1...maximumImageBytes).contains(byteCount)
+              (1...ImageOptimizationService.maximumImportBytes).contains(byteCount)
         else {
             throw ValidationError.resourceLimitExceeded
         }
@@ -245,6 +246,35 @@ enum VaultResourcePolicy {
         }
 
         return matchedImageSourceIDs.count == expectedImageSources.count
+    }
+
+    static func isValidStoredRichText(
+        _ data: Data,
+        expectedImageSources: [VaultImageSource]
+    ) -> Bool {
+        if VaultRichTextDocument.isLegacyRTFD(data) {
+            return isValidRTFD(data, expectedImageSources: expectedImageSources)
+        }
+
+        guard !data.isEmpty,
+              data.count <= maximumRTFDBytesPerNote,
+              let document = VaultRichTextDocument.decode(data),
+              VaultRichTextDocument.attachmentLocations(in: document).count
+                == expectedImageSources.count
+        else {
+            return false
+        }
+
+        var containsUnexpectedAttachment = false
+        document.enumerateAttribute(
+            .attachment,
+            in: NSRange(location: 0, length: document.length)
+        ) { value, _, stop in
+            guard value != nil else { return }
+            containsUnexpectedAttachment = true
+            stop.pointee = true
+        }
+        return !containsUnexpectedAttachment
     }
 
     static func canPersistRichContent(

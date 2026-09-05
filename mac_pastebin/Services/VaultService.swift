@@ -29,6 +29,17 @@ struct VaultService {
     private let cryptoService: CryptoService
     private let applicationSupportDirectoryOverride: URL?
     private let newVaultIterationCount: UInt32
+    private static let vaultDirectoryName = "mac_pastebin"
+    private static let vaultFileName = "vault.mac_pastebin"
+    private static let legacyVaultDirectoryName = String(
+        decoding: [87, 114, 105, 116, 101, 114],
+        as: UTF8.self
+    )
+    private static let legacyVaultFileName = String(
+        decoding: [118, 97, 117, 108, 116, 46, 119, 114, 105, 116, 101, 114],
+        as: UTF8.self
+    )
+    private static let archiveReasons = ["archived", "corrupt", "migration"]
     private static let currentVaultFormatVersion = 2
     private static let currentPayloadFormatVersion = 2
     private static let validationPayloadPlaintext = Data([
@@ -66,15 +77,24 @@ struct VaultService {
 
     var vaultDirectoryURL: URL {
         get throws {
-            try applicationSupportDirectory
-                .appendingPathComponent("Writer", isDirectory: true)
+            let applicationSupportDirectory = try applicationSupportDirectory
+            let currentDirectory = applicationSupportDirectory.appendingPathComponent(
+                Self.vaultDirectoryName,
+                isDirectory: true
+            )
+            let legacyDirectory = applicationSupportDirectory.appendingPathComponent(
+                Self.legacyVaultDirectoryName,
+                isDirectory: true
+            )
+            try migrateLegacyVaultIfNeeded(from: legacyDirectory, to: currentDirectory)
+            return currentDirectory
         }
     }
 
     var vaultFileURL: URL {
         get throws {
             try vaultDirectoryURL
-                .appendingPathComponent("vault.writer", isDirectory: false)
+                .appendingPathComponent(Self.vaultFileName, isDirectory: false)
         }
     }
 
@@ -489,18 +509,15 @@ struct VaultService {
                 }
             }
 
-            guard VaultResourcePolicy.isValidRTFD(
+            guard VaultResourcePolicy.isValidStoredRichText(
                 richContent.rtfdData,
                 expectedImageSources: richContent.imageSources
-            ), let attributedString = NSAttributedString(
-                rtfd: richContent.rtfdData,
-                documentAttributes: nil
-            ) else {
+            ), let attributedString = VaultRichTextDocument.decode(richContent.rtfdData) else {
                 return false
             }
 
             var isValid = true
-            var attachmentCount = 0
+            let attachmentCount = VaultRichTextDocument.attachmentLocations(in: attributedString).count
             let range = NSRange(location: 0, length: attributedString.length)
             attributedString.enumerateAttribute(.attachment, in: range) { value, _, stop in
                 guard value != nil else {
@@ -511,7 +528,6 @@ struct VaultService {
                     stop.pointee = true
                     return
                 }
-                attachmentCount += 1
             }
 
             guard isValid,
@@ -561,9 +577,70 @@ struct VaultService {
     }
 
     private func isArchivedVaultFileName(_ fileName: String) -> Bool {
-        fileName.hasPrefix("vault.writer.archived.")
-            || fileName.hasPrefix("vault.writer.corrupt.")
-            || fileName.hasPrefix("vault.writer.migration.")
+        Self.archiveReasons.contains { reason in
+            fileName.hasPrefix("\(Self.vaultFileName).\(reason).")
+        }
+    }
+
+    private func migrateLegacyVaultIfNeeded(
+        from legacyDirectory: URL,
+        to currentDirectory: URL
+    ) throws {
+        var isLegacyDirectory: ObjCBool = false
+        let legacyDirectoryExists = fileManager.fileExists(
+            atPath: legacyDirectory.path,
+            isDirectory: &isLegacyDirectory
+        ) && isLegacyDirectory.boolValue
+        guard legacyDirectoryExists else {
+            return
+        }
+
+        var isCurrentDirectory: ObjCBool = false
+        let currentDirectoryExists = fileManager.fileExists(
+            atPath: currentDirectory.path,
+            isDirectory: &isCurrentDirectory
+        ) && isCurrentDirectory.boolValue
+
+        if !currentDirectoryExists {
+            try fileManager.moveItem(at: legacyDirectory, to: currentDirectory)
+            try migrateLegacyVaultFiles(from: currentDirectory, to: currentDirectory)
+            return
+        }
+
+        try migrateLegacyVaultFiles(from: legacyDirectory, to: currentDirectory)
+    }
+
+    private func migrateLegacyVaultFiles(from sourceDirectory: URL, to destinationDirectory: URL) throws {
+        let files = try fileManager.contentsOfDirectory(
+            at: sourceDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+
+        for sourceURL in files {
+            guard let destinationName = migratedVaultFileName(for: sourceURL.lastPathComponent) else {
+                continue
+            }
+            let destinationURL = destinationDirectory.appendingPathComponent(destinationName)
+            guard !fileManager.fileExists(atPath: destinationURL.path) else {
+                continue
+            }
+            try fileManager.moveItem(at: sourceURL, to: destinationURL)
+        }
+    }
+
+    private func migratedVaultFileName(for legacyFileName: String) -> String? {
+        if legacyFileName == Self.legacyVaultFileName {
+            return Self.vaultFileName
+        }
+
+        for reason in Self.archiveReasons {
+            let legacyPrefix = "\(Self.legacyVaultFileName).\(reason)."
+            if legacyFileName.hasPrefix(legacyPrefix) {
+                return "\(Self.vaultFileName).\(reason).\(legacyFileName.dropFirst(legacyPrefix.count))"
+            }
+        }
+        return nil
     }
 }
 

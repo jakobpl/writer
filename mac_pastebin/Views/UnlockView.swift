@@ -87,7 +87,7 @@ struct UnlockView: View {
             Circle()
                 .fill(.clear)
                 .glassEffect(
-                    .regular.tint(WriterPalette.glassTint.opacity(0.30)),
+                    .regular.tint(MacPastebinPalette.glassTint.opacity(0.30)),
                     in: Circle()
                 )
 
@@ -102,7 +102,7 @@ struct UnlockView: View {
             Image(systemName: appState.vaultNeedsCreation ? "plus.app" : "lock.fill")
                 .font(.system(size: 42, weight: .light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(WriterPalette.paperInk.opacity(0.48))
+                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.48))
                 .shadow(color: .white.opacity(0.65), radius: 2, x: 0, y: -1)
         }
         .frame(width: 112, height: 112)
@@ -112,7 +112,7 @@ struct UnlockView: View {
 
     private var passwordField: some View {
         VStack(spacing: 12) {
-            WriterSecurePasswordField(
+            MacPastebinSecurePasswordField(
                 text: $password,
                 placeholder: "Password",
                 accessibilityLabel: appState.vaultNeedsCreation ? "Create vault password" : "Vault password",
@@ -121,10 +121,10 @@ struct UnlockView: View {
                 onSubmit: submitPassword
             )
             .frame(height: 48)
-            .writerInputChrome(cornerRadius: 24)
+            .macPastebinInputChrome(cornerRadius: 24)
 
             if appState.vaultNeedsCreation {
-                WriterSecurePasswordField(
+                MacPastebinSecurePasswordField(
                     text: $passwordConfirmation,
                     placeholder: "Confirm password",
                     accessibilityLabel: "Confirm vault password",
@@ -133,11 +133,11 @@ struct UnlockView: View {
                     onSubmit: submitPassword
                 )
                 .frame(height: 48)
-                .writerInputChrome(cornerRadius: 24)
+                .macPastebinInputChrome(cornerRadius: 24)
 
                 Text(passwordGuidance)
                     .font(.caption)
-                    .foregroundStyle(passwordGuidanceIsError ? .red.opacity(0.82) : WriterPalette.paperInk.opacity(0.55))
+                    .foregroundStyle(passwordGuidanceIsError ? .red.opacity(0.82) : MacPastebinPalette.paperInk.opacity(0.55))
                     .multilineTextAlignment(.center)
             }
         }
@@ -151,7 +151,7 @@ struct UnlockView: View {
                 if isConfirmingVaultReplacement {
                     Text("This moves the current vault aside and starts a new empty vault.")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(WriterPalette.paperInk.opacity(0.62))
+                        .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.62))
                         .multilineTextAlignment(.center)
 
                     HStack(spacing: 12) {
@@ -176,7 +176,7 @@ struct UnlockView: View {
                 VStack(spacing: 14) {
                     Text("This moves the current encrypted vault aside. It does not delete or decrypt it.")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(WriterPalette.paperInk.opacity(0.62))
+                        .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.62))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -204,7 +204,7 @@ struct UnlockView: View {
             } label: {
                 Label("Create vault", systemImage: "plus")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(WriterPalette.paperInk.opacity(canSubmitPassword ? 0.78 : 0.36))
+                    .foregroundStyle(MacPastebinPalette.paperInk.opacity(canSubmitPassword ? 0.78 : 0.36))
                     .frame(height: 44)
                     .padding(.horizontal, 22)
             }
@@ -217,7 +217,7 @@ struct UnlockView: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(WriterPalette.paperInk.opacity(0.80))
+                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.80))
                 .frame(height: 44)
                 .padding(.horizontal, 22)
         }
@@ -230,24 +230,24 @@ struct UnlockView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Archived Vaults")
                     .font(.headline)
-                    .foregroundStyle(WriterPalette.paperInk.opacity(0.74))
+                    .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.74))
 
                 ForEach(appState.archivedVaults) { archivedVault in
                     HStack(spacing: 10) {
                         Image(systemName: "archivebox")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(WriterPalette.paperInk.opacity(0.55))
+                            .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.55))
                             .frame(width: 28, height: 28)
-                            .writerControlChrome(cornerRadius: 8)
+                            .macPastebinControlChrome(cornerRadius: 8)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(archivedVault.fileName)
                                 .lineLimit(1)
-                                .foregroundStyle(WriterPalette.paperInk.opacity(0.82))
+                                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.82))
 
                             Text(byteCountLabel(archivedVault.byteCount))
                                 .font(.caption)
-                                .foregroundStyle(WriterPalette.paperInk.opacity(0.52))
+                                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.52))
                         }
 
                         Spacer()
@@ -256,15 +256,15 @@ struct UnlockView: View {
                             password = ""
                             appState.restoreArchivedVault(id: archivedVault.id)
                         }
-                        .buttonStyle(WriterButtonStyle())
+                        .buttonStyle(MacPastebinButtonStyle())
 
                         Button("Delete", role: .destructive) {
                             archivedVaultPendingDeletion = archivedVault
                         }
-                        .buttonStyle(WriterButtonStyle())
+                        .buttonStyle(MacPastebinButtonStyle())
                     }
                     .padding(10)
-                    .writerControlChrome(cornerRadius: 12)
+                    .macPastebinControlChrome(cornerRadius: 12)
                 }
             }
             .padding(16)

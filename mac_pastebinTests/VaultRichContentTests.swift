@@ -3,7 +3,7 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
-@testable import writer
+@testable import mac_pastebin
 
 @MainActor
 final class VaultRichContentTests: XCTestCase {
@@ -14,6 +14,49 @@ final class VaultRichContentTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         temporaryDirectories.removeAll()
+    }
+
+    func testLegacyVaultLocationMigratesWithoutLosingTheActiveVaultOrArchives() throws {
+        let applicationSupportDirectory = makeTemporaryDirectory()
+        let password = "legacy migration passphrase"
+        let originalService = makeService(in: applicationSupportDirectory)
+        _ = try originalService.createVault(password: password)
+
+        let currentDirectory = try originalService.vaultDirectoryURL
+        let currentFile = try originalService.vaultFileURL
+        let legacyDirectoryName = String(
+            decoding: [87, 114, 105, 116, 101, 114],
+            as: UTF8.self
+        )
+        let legacyFileName = String(
+            decoding: [118, 97, 117, 108, 116, 46, 119, 114, 105, 116, 101, 114],
+            as: UTF8.self
+        )
+        let legacyDirectory = applicationSupportDirectory.appendingPathComponent(
+            legacyDirectoryName,
+            isDirectory: true
+        )
+
+        try FileManager.default.moveItem(at: currentDirectory, to: legacyDirectory)
+        let legacyActiveFile = legacyDirectory.appendingPathComponent(legacyFileName)
+        try FileManager.default.moveItem(
+            at: legacyDirectory.appendingPathComponent(currentFile.lastPathComponent),
+            to: legacyActiveFile
+        )
+        try FileManager.default.copyItem(
+            at: legacyActiveFile,
+            to: legacyDirectory.appendingPathComponent("\(legacyFileName).archived.1")
+        )
+
+        let migratedService = makeService(in: applicationSupportDirectory)
+        XCTAssertTrue(migratedService.vaultFileExists())
+        XCTAssertEqual(try migratedService.vaultFileURL.lastPathComponent, "vault.mac_pastebin")
+        XCTAssertEqual(
+            try migratedService.archivedVaults().map(\.fileName),
+            ["vault.mac_pastebin.archived.1"]
+        )
+        XCTAssertNoThrow(try migratedService.unlockVault(password: password))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyDirectory.path))
     }
 
     func testVersionOneJSONPayloadDecodesWithoutRichContent() throws {
@@ -122,6 +165,48 @@ final class VaultRichContentTests: XCTestCase {
         XCTAssertEqual(reopenedContent.imageDisplayWidths, fixture.content.imageDisplayWidths)
     }
 
+    func testSingleCopyImageStorageSurvivesEncryptedRoundTrip() throws {
+        let directory = makeTemporaryDirectory()
+        let service = makeService(in: directory)
+        let unlockResult = try service.createVault(password: "correct horse battery staple")
+        let fixture = try makeRichFixture()
+        let legacyDocument = try XCTUnwrap(
+            NSAttributedString(rtfd: fixture.content.rtfdData, documentAttributes: nil)
+        )
+        let storedDocument = try XCTUnwrap(VaultRichTextDocument.encode(legacyDocument))
+        let content = VaultRichContent(
+            rtfdData: storedDocument,
+            imageAttachmentIDs: fixture.content.imageAttachmentIDs,
+            imageDisplayWidths: fixture.content.imageDisplayWidths,
+            imageSources: fixture.content.imageSources
+        )
+        let now = Date()
+        let note = VaultNote(
+            id: "single-copy",
+            title: "Single copy",
+            body: fixture.plainText,
+            createdAt: now,
+            updatedAt: now,
+            isTitleFinalized: true,
+            richContent: content
+        )
+        let payload = VaultPayload(formatVersion: 2, notes: [note], selectedNoteID: note.id)
+
+        for imageData in fixture.imageData.values {
+            XCTAssertNil(storedDocument.range(of: imageData))
+        }
+        try service.savePayload(payload, using: unlockResult.key)
+        let reopened = try service.unlockVault(password: "correct horse battery staple")
+        let reopenedContent = try XCTUnwrap(reopened.payload.notes.first?.richContent)
+        let decoded = try XCTUnwrap(VaultRichTextDocument.decode(reopenedContent.rtfdData))
+
+        XCTAssertEqual(reopened.payload, payload)
+        XCTAssertEqual(
+            VaultRichTextDocument.attachmentLocations(in: decoded).count,
+            fixture.content.imageAttachmentIDs.count
+        )
+    }
+
     func testSavingVersionOneVaultCreatesEncryptedMigrationArchiveAndWritesVersionTwo() throws {
         let directory = makeTemporaryDirectory()
         let service = makeService(in: directory)
@@ -195,7 +280,7 @@ final class VaultRichContentTests: XCTestCase {
 
     private func makeTemporaryDirectory() -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("WriterTests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("MacPastebinTests-\(UUID().uuidString)", isDirectory: true)
         temporaryDirectories.append(directory)
         return directory
     }

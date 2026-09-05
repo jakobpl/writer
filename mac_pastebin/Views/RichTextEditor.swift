@@ -44,13 +44,106 @@ enum EditorFormattingCommand {
     case outdent
 }
 
+enum RichTextImageLayout {
+    static let defaultWidthFraction = 0.30
+    static let maximumWidth: CGFloat = 300
+    static let maximumHeight: CGFloat = 220
+
+    static func displaySize(
+        for imageSize: CGSize,
+        containerWidth: CGFloat,
+        widthFraction: Double
+    ) -> CGSize {
+        guard imageSize.width.isFinite,
+              imageSize.height.isFinite,
+              imageSize.width > 0,
+              imageSize.height > 0
+        else {
+            return CGSize(width: 1, height: 1)
+        }
+
+        let safeFraction = widthFraction.isFinite
+            ? min(max(widthFraction, 0.10), 1)
+            : defaultWidthFraction
+        let width = min(
+            max(containerWidth * safeFraction, 1),
+            maximumWidth,
+            imageSize.width
+        )
+        let proportionalHeight = width * imageSize.height / imageSize.width
+        let scale = min(1, maximumHeight / proportionalHeight)
+        return CGSize(width: width * scale, height: proportionalHeight * scale)
+    }
+
+    @discardableResult
+    static func applyDisplaySize(
+        _ displaySize: CGSize,
+        to attachment: NSTextAttachment,
+        image: NSImage?
+    ) -> Bool {
+        let bounds = CGRect(origin: .zero, size: displaySize)
+        let cellAlreadyMatches = attachment.attachmentCell?.cellSize() == displaySize
+        guard attachment.bounds != bounds || !cellAlreadyMatches else { return false }
+
+        attachment.bounds = bounds
+
+        // NSTextView's TextKit 1 layout takes an attachment's visible size from
+        // its cell, not from NSTextAttachment.bounds. Keep both in sync so the
+        // original file wrapper is preserved while AppKit draws the scaled image.
+        if let image {
+            image.size = displaySize
+            let cell = RoundedImageAttachmentCell(imageCell: image)
+            attachment.attachmentCell = cell
+            cell.attachment = attachment
+        }
+
+        return true
+    }
+}
+
+private extension NSAttributedString.Key {
+    static let pendingImageImportID = NSAttributedString.Key("macPastebinPendingImageImportID")
+}
+
+final class RoundedImageAttachmentCell: NSTextAttachmentCell {
+    static let cornerRadius: CGFloat = 12
+
+    override init(imageCell image: NSImage?) {
+        super.init(imageCell: image)
+    }
+
+    required init(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
+        guard let image else {
+            super.draw(withFrame: cellFrame, in: controlView)
+            return
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        let radius = min(Self.cornerRadius, min(cellFrame.width, cellFrame.height) / 2)
+        NSBezierPath(roundedRect: cellFrame, xRadius: radius, yRadius: radius).addClip()
+        image.draw(
+            in: cellFrame,
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: [.interpolation: NSImageInterpolation.high]
+        )
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}
+
 @MainActor
 final class RichTextEditorContext: ObservableObject {
     @Published private(set) var fontFamily: String? = NSFont.systemFont(ofSize: 19).familyName
     @Published private(set) var fontSize: Double? = 19
     @Published private(set) var isBold: Bool?
     @Published private(set) var isItalic: Bool?
-    @Published private(set) var textColor = NSColor.writerPaperInk
+    @Published private(set) var textColor = NSColor.macPastebinPaperInk
     @Published private(set) var textAlignment: NSTextAlignment? = .left
 
     weak var commandHandler: RichTextEditorCommandHandling?
@@ -230,7 +323,7 @@ struct RichTextEditor: NSViewRepresentable {
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
 
-        let textView = WriterTextView()
+        let textView = MacPastebinTextView()
         textView.delegate = context.coordinator
         textView.isRichText = true
         textView.importsGraphics = false
@@ -247,8 +340,8 @@ struct RichTextEditor: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.drawsBackground = false
-        textView.textColor = .writerPaperInk
-        textView.insertionPointColor = .writerPaperInk
+        textView.textColor = .macPastebinPaperInk
+        textView.insertionPointColor = .macPastebinPaperInk
         textView.font = .systemFont(ofSize: 19)
         textView.typingAttributes = Coordinator.defaultAttributes
         textView.setAccessibilityLabel("Note editor")
@@ -269,9 +362,7 @@ struct RichTextEditor: NSViewRepresentable {
             context.coordinator.load(noteID: noteID, plainText: plainText, richContent: richContent)
         }
 
-        DispatchQueue.main.async {
-            context.coordinator.updateAttachmentBounds()
-        }
+        context.coordinator.scheduleAttachmentBoundsUpdate()
     }
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
@@ -282,16 +373,18 @@ struct RichTextEditor: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate, RichTextEditorCommandHandling {
         static let defaultAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 19),
-            .foregroundColor: NSColor.writerPaperInk
+            .foregroundColor: NSColor.macPastebinPaperInk
         ]
 
         var parent: RichTextEditor
-        weak var textView: WriterTextView?
+        weak var textView: MacPastebinTextView?
         var loadedNoteID: String?
         private var imageDisplayWidths: [String: Double] = [:]
         private var attachmentIDsByObject: [ObjectIdentifier: String] = [:]
         private var imageSourcesByID: [String: VaultImageSource] = [:]
+        private var imageImportTasks: [String: Task<Void, Never>] = [:]
         private var isLoading = false
+        private var isAttachmentBoundsUpdateScheduled = false
         private var formattingPreview: FormattingPreview?
         private var copiedFormatting: [NSAttributedString.Key: Any]?
 
@@ -319,7 +412,7 @@ struct RichTextEditor: NSViewRepresentable {
                 self?.moveImage(from: source, to: destination)
             }
             textView.onViewportWidthChange = { [weak self] in
-                self?.updateAttachmentBounds()
+                self?.scheduleAttachmentBoundsUpdate()
             }
             textView.onFormattingCommand = { [weak self] command in
                 self?.performEditorCommand(command)
@@ -331,8 +424,20 @@ struct RichTextEditor: NSViewRepresentable {
                 return
             }
 
+            if loadedNoteID != noteID {
+                imageImportTasks.values.forEach { $0.cancel() }
+                imageImportTasks.removeAll(keepingCapacity: false)
+            }
+            // Undo and transient previews belong to the document being replaced.
+            textView.breakUndoCoalescing()
+            textView.undoManager?.removeAllActions()
+            formattingPreview = nil
+            textView.selectedImageCharacterIndex = nil
             isLoading = true
             loadedNoteID = noteID
+            let shouldCompactLegacyRichText = richContent.map {
+                VaultRichTextDocument.isLegacyRTFD($0.rtfdData)
+            } ?? false
             imageDisplayWidths = richContent?.imageDisplayWidths ?? [:]
             attachmentIDsByObject.removeAll(keepingCapacity: true)
             imageSourcesByID = Dictionary(
@@ -341,7 +446,7 @@ struct RichTextEditor: NSViewRepresentable {
 
             let attributedString: NSAttributedString
             if let data = richContent?.rtfdData,
-               let decoded = NSAttributedString(rtfd: data, documentAttributes: nil) {
+               let decoded = VaultRichTextDocument.decode(data) {
                 attributedString = decoded
             } else {
                 attributedString = NSAttributedString(string: plainText, attributes: Self.defaultAttributes)
@@ -354,6 +459,9 @@ struct RichTextEditor: NSViewRepresentable {
             assignAttachmentIdentifiers(richContent?.imageAttachmentIDs ?? [])
             updateAttachmentBounds()
             isLoading = false
+            if shouldCompactLegacyRichText {
+                emitChange()
+            }
             scheduleSelectionStateUpdate()
         }
 
@@ -641,13 +749,13 @@ struct RichTextEditor: NSViewRepresentable {
         }
 
         private func effectiveFormattingRange(in textView: NSTextView, storage: NSTextStorage) -> NSRange {
-            let selection = textView.selectedRange()
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
             guard selection.length == 0, storage.length > 0 else { return selection }
             return NSRange(location: min(selection.location, storage.length - 1), length: 0)
         }
 
         private func paragraphRange(in textView: NSTextView, storage: NSTextStorage) -> NSRange {
-            let selection = textView.selectedRange()
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
             let safeLocation = min(selection.location, storage.length)
             return (storage.string as NSString).paragraphRange(
                 for: NSRange(location: safeLocation, length: min(selection.length, storage.length - safeLocation))
@@ -655,7 +763,7 @@ struct RichTextEditor: NSViewRepresentable {
         }
 
         func insertImage() {
-            guard let textView else {
+            guard textView != nil else {
                 return
             }
 
@@ -670,49 +778,155 @@ struct RichTextEditor: NSViewRepresentable {
                 return
             }
 
-            do {
-                _ = try VaultResourcePolicy.validatedImageFileSize(at: url)
-                let data = try Data(contentsOf: url, options: .mappedIfSafe)
-                let imageMetadata = try VaultResourcePolicy.imageMetadata(for: data)
-                guard data.count <= VaultResourcePolicy.maximumImageBytes,
-                      VaultResourcePolicy.canAddImage(
-                          byteCount: data.count,
-                          metadata: imageMetadata,
-                          to: currentAttachmentIDs().compactMap { imageSourcesByID[$0] }
-                      )
-                else {
-                    parent.onError("That image would exceed this note's attachment limit.")
-                    return
-                }
-
-                let attachmentID = UUID().uuidString
-                let pathExtension = url.pathExtension.isEmpty ? "image" : url.pathExtension.lowercased()
-                let fileWrapper = FileWrapper(regularFileWithContents: data)
-                fileWrapper.preferredFilename = "\(attachmentID).\(pathExtension)"
-                let attachment = NSTextAttachment(fileWrapper: fileWrapper)
-                attachmentIDsByObject[ObjectIdentifier(attachment)] = attachmentID
-                imageSourcesByID[attachmentID] = VaultImageSource(
-                    id: attachmentID,
-                    data: data,
-                    typeIdentifier: UTType(filenameExtension: pathExtension)?.identifier ?? UTType.image.identifier,
-                    filenameExtension: pathExtension
-                )
-
-                let widthFraction = 0.50
-                imageDisplayWidths[attachmentID] = widthFraction
-                setBounds(for: attachment, imageSize: imageMetadata.size, widthFraction: widthFraction)
-
-                performMutation(actionName: "Insert Image") {
-                    let replacement = NSAttributedString(attachment: attachment)
-                    let selection = textView.selectedRange()
-                    textView.textStorage?.replaceCharacters(in: selection, with: replacement)
-                    textView.setSelectedRange(NSRange(location: selection.location + 1, length: 0))
-                }
-            } catch VaultResourcePolicy.ValidationError.resourceLimitExceeded {
-                parent.onError("That image is too large or complex to insert safely.")
-            } catch {
-                parent.onError("The image could not be read or is not a supported still image.")
+            guard currentAttachmentIDs().count + imageImportTasks.count
+                    < VaultResourcePolicy.maximumAttachmentsPerNote
+            else {
+                parent.onError("This note already has the maximum number of images.")
+                return
             }
+
+            let importID = UUID().uuidString
+            let noteID = loadedNoteID
+            insertImagePlaceholder(id: importID)
+
+            imageImportTasks[importID] = Task { [weak self] in
+                do {
+                    let optimized = try await Task.detached(priority: .userInitiated) {
+                        try ImageOptimizationService.optimizeImage(at: url)
+                    }.value
+                    guard !Task.isCancelled else { return }
+                    self?.finishImageImport(optimized, id: importID, noteID: noteID)
+                } catch ImageOptimizationService.OptimizationError.resourceLimitExceeded {
+                    self?.failImageImport(
+                        id: importID,
+                        message: "That image is too large or complex to optimize safely."
+                    )
+                } catch {
+                    self?.failImageImport(
+                        id: importID,
+                        message: "The image could not be optimized or is not a supported still image."
+                    )
+                }
+            }
+        }
+
+        private func insertImagePlaceholder(id: String) {
+            guard let textView, let storage = textView.textStorage else { return }
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
+            let placeholder = NSAttributedString(
+                string: "⏳ Optimizing image for encryption…",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 14, weight: .medium),
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .pendingImageImportID: id
+                ]
+            )
+
+            isLoading = true
+            storage.replaceCharacters(in: selection, with: placeholder)
+            textView.setSelectedRange(
+                NSRange(location: selection.location + placeholder.length, length: 0)
+            )
+            isLoading = false
+        }
+
+        private func finishImageImport(
+            _ optimized: ImageOptimizationService.Result,
+            id: String,
+            noteID: String?
+        ) {
+            imageImportTasks.removeValue(forKey: id)
+            guard loadedNoteID == noteID,
+                  let textView,
+                  let storage = textView.textStorage,
+                  let placeholderRange = pendingImageRange(id: id, in: storage)
+            else {
+                return
+            }
+
+            let metadata = VaultResourcePolicy.ImageMetadata(
+                width: optimized.width,
+                height: optimized.height,
+                frameCount: 1
+            )
+            let existingSources = currentAttachmentIDs().compactMap { imageSourcesByID[$0] }
+            guard VaultResourcePolicy.canAddImage(
+                byteCount: optimized.data.count,
+                metadata: metadata,
+                to: existingSources
+            ) else {
+                removeImagePlaceholder(id: id)
+                parent.onError("This note has reached its safe image storage limit.")
+                return
+            }
+
+            let attachmentID = UUID().uuidString
+            let wrapper = FileWrapper(regularFileWithContents: optimized.data)
+            wrapper.preferredFilename = "\(attachmentID).\(optimized.filenameExtension)"
+            let attachment = NSTextAttachment(fileWrapper: wrapper)
+            attachmentIDsByObject[ObjectIdentifier(attachment)] = attachmentID
+            imageSourcesByID[attachmentID] = VaultImageSource(
+                id: attachmentID,
+                data: optimized.data,
+                typeIdentifier: optimized.typeIdentifier,
+                filenameExtension: optimized.filenameExtension
+            )
+
+            let widthFraction = RichTextImageLayout.defaultWidthFraction
+            imageDisplayWidths[attachmentID] = widthFraction
+            setBounds(for: attachment, imageSize: metadata.size, widthFraction: widthFraction)
+
+            let before = NSMutableAttributedString(attributedString: storage)
+            before.deleteCharacters(in: placeholderRange)
+            registerUndo(
+                attributedString: before,
+                imageDisplayWidths: imageDisplayWidths.filter { $0.key != attachmentID },
+                selection: NSRange(location: min(placeholderRange.location, before.length), length: 0),
+                actionName: "Insert Image"
+            )
+            textView.undoManager?.setActionName("Insert Image")
+
+            isLoading = true
+            storage.replaceCharacters(
+                in: placeholderRange,
+                with: NSAttributedString(attachment: attachment)
+            )
+            textView.setSelectedRange(NSRange(location: placeholderRange.location + 1, length: 0))
+            isLoading = false
+            emitChange()
+            updateSelectionState()
+        }
+
+        private func failImageImport(id: String, message: String) {
+            imageImportTasks.removeValue(forKey: id)
+            removeImagePlaceholder(id: id)
+            parent.onError(message)
+        }
+
+        private func removeImagePlaceholder(id: String) {
+            guard let textView,
+                  let storage = textView.textStorage,
+                  let range = pendingImageRange(id: id, in: storage)
+            else {
+                return
+            }
+            isLoading = true
+            storage.deleteCharacters(in: range)
+            textView.setSelectedRange(NSRange(location: min(range.location, storage.length), length: 0))
+            isLoading = false
+        }
+
+        private func pendingImageRange(id: String, in storage: NSAttributedString) -> NSRange? {
+            var match: NSRange?
+            storage.enumerateAttribute(
+                .pendingImageImportID,
+                in: NSRange(location: 0, length: storage.length)
+            ) { value, range, stop in
+                guard value as? String == id else { return }
+                match = range
+                stop.pointee = true
+            }
+            return match
         }
 
         func focusEditor() {
@@ -723,6 +937,8 @@ struct RichTextEditor: NSViewRepresentable {
         }
 
         func clearEditor() {
+            imageImportTasks.values.forEach { $0.cancel() }
+            imageImportTasks.removeAll(keepingCapacity: false)
             isLoading = true
             if let textView {
                 textView.inputContext?.discardMarkedText()
@@ -730,6 +946,8 @@ struct RichTextEditor: NSViewRepresentable {
                 if textView.window?.firstResponder === textView {
                     textView.window?.makeFirstResponder(nil)
                 }
+                textView.breakUndoCoalescing()
+                textView.undoManager?.removeAllActions()
                 textView.delegate = nil
                 textView.textStorage?.setAttributedString(NSAttributedString())
             }
@@ -737,6 +955,8 @@ struct RichTextEditor: NSViewRepresentable {
             attachmentIDsByObject.removeAll(keepingCapacity: false)
             imageSourcesByID.removeAll(keepingCapacity: false)
             textView?.selectedImageCharacterIndex = nil
+            formattingPreview = nil
+            copiedFormatting = nil
             loadedNoteID = nil
             isLoading = false
         }
@@ -747,6 +967,7 @@ struct RichTextEditor: NSViewRepresentable {
             }
 
             let fullRange = NSRange(location: 0, length: storage.length)
+            var didChangeBounds = false
             storage.enumerateAttribute(.attachment, in: fullRange) { value, _, _ in
                 guard let attachment = value as? NSTextAttachment,
                       let attachmentID = attachmentID(for: attachment),
@@ -755,11 +976,28 @@ struct RichTextEditor: NSViewRepresentable {
                     return
                 }
 
-                let fraction = imageDisplayWidths[attachmentID] ?? 1
-                setBounds(for: attachment, imageSize: imageSize, widthFraction: fraction)
+                let fraction = imageDisplayWidths[attachmentID]
+                    ?? RichTextImageLayout.defaultWidthFraction
+                didChangeBounds = setBounds(
+                    for: attachment,
+                    imageSize: imageSize,
+                    widthFraction: fraction
+                ) || didChangeBounds
             }
-            textView.layoutManager?.invalidateLayout(forCharacterRange: fullRange, actualCharacterRange: nil)
-            textView.needsDisplay = true
+            if didChangeBounds {
+                textView.layoutManager?.invalidateLayout(forCharacterRange: fullRange, actualCharacterRange: nil)
+                textView.needsDisplay = true
+            }
+        }
+
+        func scheduleAttachmentBoundsUpdate() {
+            guard !isAttachmentBoundsUpdateScheduled else { return }
+            isAttachmentBoundsUpdateScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isAttachmentBoundsUpdateScheduled = false
+                self.updateAttachmentBounds()
+            }
         }
 
         private func transformFonts(_ transform: (NSFont) -> NSFont) {
@@ -775,8 +1013,8 @@ struct RichTextEditor: NSViewRepresentable {
         }
 
         private func transformFontsWithoutCommit(_ transform: (NSFont) -> NSFont) {
-            guard let textView else { return }
-            let selection = textView.selectedRange()
+            guard let textView, let storage = textView.textStorage else { return }
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
             if selection.length == 0 {
                 var attributes = textView.typingAttributes
                 let font = attributes[.font] as? NSFont ?? .systemFont(ofSize: 19)
@@ -785,21 +1023,21 @@ struct RichTextEditor: NSViewRepresentable {
                 return
             }
 
-            textView.textStorage?.enumerateAttribute(.font, in: selection) { value, range, _ in
+            storage.enumerateAttribute(.font, in: selection) { value, range, _ in
                 let font = value as? NSFont ?? .systemFont(ofSize: 19)
-                textView.textStorage?.addAttribute(.font, value: transform(font), range: range)
+                storage.addAttribute(.font, value: transform(font), range: range)
             }
         }
 
         private func applyAttributeWithoutCommit(_ key: NSAttributedString.Key, value: Any) {
-            guard let textView else { return }
-            let selection = textView.selectedRange()
+            guard let textView, let storage = textView.textStorage else { return }
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
             if selection.length == 0 {
                 var attributes = textView.typingAttributes
                 attributes[key] = value
                 textView.typingAttributes = attributes
             } else {
-                textView.textStorage?.addAttribute(key, value: value, range: selection)
+                storage.addAttribute(key, value: value, range: selection)
             }
         }
 
@@ -819,6 +1057,7 @@ struct RichTextEditor: NSViewRepresentable {
 
             storage.beginEditing()
             mutation()
+            normalizeSelection(in: textView, storage: storage)
             storage.endEditing()
             updateSelectionState()
         }
@@ -828,7 +1067,7 @@ struct RichTextEditor: NSViewRepresentable {
             isLoading = true
             storage.setAttributedString(preview.attributedString)
             textView.typingAttributes = preview.typingAttributes
-            textView.setSelectedRange(preview.selection)
+            textView.setSelectedRange(clampedRange(preview.selection, toLength: storage.length))
             imageDisplayWidths = preview.imageDisplayWidths
             isLoading = false
         }
@@ -842,7 +1081,7 @@ struct RichTextEditor: NSViewRepresentable {
 
             let before = NSAttributedString(attributedString: storage)
             let beforeWidths = imageDisplayWidths
-            let beforeSelection = textView.selectedRange()
+            let beforeSelection = clampedRange(textView.selectedRange(), toLength: storage.length)
             registerUndo(
                 attributedString: before,
                 imageDisplayWidths: beforeWidths,
@@ -853,6 +1092,7 @@ struct RichTextEditor: NSViewRepresentable {
 
             storage.beginEditing()
             mutation()
+            normalizeSelection(in: textView, storage: storage)
             storage.endEditing()
             emitChange()
             updateSelectionState()
@@ -899,7 +1139,7 @@ struct RichTextEditor: NSViewRepresentable {
             isLoading = true
             storage.setAttributedString(attributedString)
             self.imageDisplayWidths = imageDisplayWidths
-            textView.setSelectedRange(selection)
+            textView.setSelectedRange(clampedRange(selection, toLength: storage.length))
             updateAttachmentBounds()
             isLoading = false
             emitChange()
@@ -909,16 +1149,30 @@ struct RichTextEditor: NSViewRepresentable {
         private func emitChange() {
             guard !isLoading,
                   let textView,
-                  let storage = textView.textStorage,
-                  let rtfdData = storage.rtfd(
-                    from: NSRange(location: 0, length: storage.length),
-                    documentAttributes: [:]
-                  )
+                  let storage = textView.textStorage
             else {
                 return
             }
 
-            let plainText = storage.string.replacingOccurrences(of: "\u{FFFC}", with: "")
+            let persistableStorage = NSMutableAttributedString(attributedString: storage)
+            let persistableRange = NSRange(location: 0, length: persistableStorage.length)
+            var pendingRanges: [NSRange] = []
+            persistableStorage.enumerateAttribute(.pendingImageImportID, in: persistableRange) {
+                value, range, _ in
+                if value != nil {
+                    pendingRanges.append(range)
+                }
+            }
+            for range in pendingRanges.reversed() {
+                persistableStorage.deleteCharacters(in: range)
+            }
+
+            guard let rtfdData = VaultRichTextDocument.encode(persistableStorage)
+            else {
+                return
+            }
+
+            let plainText = persistableStorage.string.replacingOccurrences(of: "\u{FFFC}", with: "")
             let attachmentIDs = currentAttachmentIDs()
             let imageSources = attachmentIDs.compactMap { imageSourcesByID[$0] }
             guard VaultResourcePolicy.canPersistRichContent(
@@ -952,7 +1206,10 @@ struct RichTextEditor: NSViewRepresentable {
                 return
             }
 
-            let selection = textView.selectedRange()
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
+            if selection != textView.selectedRange() {
+                textView.setSelectedRange(selection)
+            }
             let inspectionRange: NSRange
             if selection.length > 0 {
                 inspectionRange = selection
@@ -968,7 +1225,7 @@ struct RichTextEditor: NSViewRepresentable {
                 storage.enumerateAttributes(in: inspectionRange) { attributes, _, _ in
                     if attributes[.attachment] == nil {
                         fonts.append(attributes[.font] as? NSFont ?? .systemFont(ofSize: 19))
-                        colors.append(attributes[.foregroundColor] as? NSColor ?? .writerPaperInk)
+                        colors.append(attributes[.foregroundColor] as? NSColor ?? .macPastebinPaperInk)
                     }
                 }
             }
@@ -976,7 +1233,7 @@ struct RichTextEditor: NSViewRepresentable {
             if fonts.isEmpty {
                 let attributes = textView.typingAttributes
                 fonts = [attributes[.font] as? NSFont ?? .systemFont(ofSize: 19)]
-                colors = [attributes[.foregroundColor] as? NSColor ?? .writerPaperInk]
+                colors = [attributes[.foregroundColor] as? NSColor ?? .macPastebinPaperInk]
             }
 
             let fontManager = NSFontManager.shared
@@ -991,7 +1248,7 @@ struct RichTextEditor: NSViewRepresentable {
                 fontSize: uniformValue(in: fontSizes),
                 isBold: uniformValue(in: boldValues),
                 isItalic: uniformValue(in: italicValues),
-                textColor: colors.first ?? .writerPaperInk,
+                textColor: colors.first ?? .macPastebinPaperInk,
                 textAlignment: uniformValue(in: alignmentValues)
             )
 
@@ -1004,7 +1261,10 @@ struct RichTextEditor: NSViewRepresentable {
 
         private func selectImage(at location: Int) {
             guard let textView,
-                  textView.textStorage?.attribute(.attachment, at: location, effectiveRange: nil) is NSTextAttachment
+                  let storage = textView.textStorage,
+                  location >= 0,
+                  location < storage.length,
+                  storage.attribute(.attachment, at: location, effectiveRange: nil) is NSTextAttachment
             else { return }
             textView.window?.makeFirstResponder(textView)
             textView.setSelectedRange(NSRange(location: location, length: 1))
@@ -1079,6 +1339,7 @@ struct RichTextEditor: NSViewRepresentable {
                 let insertionLocation = min(max(adjustedDestination, 0), storage.length)
                 finalInsertionLocation = insertionLocation
                 storage.insert(attachment, at: insertionLocation)
+                textView.setSelectedRange(NSRange(location: finalInsertionLocation, length: 1))
             }
             textView.setSelectedRange(NSRange(location: finalInsertionLocation, length: 1))
             updateSelectionState()
@@ -1145,13 +1406,8 @@ struct RichTextEditor: NSViewRepresentable {
                 return
             }
 
-            var attachmentRanges: [NSRange] = []
-            let fullRange = NSRange(location: 0, length: storage.length)
-            storage.enumerateAttribute(.attachment, in: fullRange) { value, range, _ in
-                if value as? NSTextAttachment != nil {
-                    attachmentRanges.append(range)
-                }
-            }
+            let attachmentRanges = VaultRichTextDocument.attachmentLocations(in: storage)
+                .map { NSRange(location: $0, length: 1) }
 
             for (index, range) in attachmentRanges.enumerated() where index < savedIdentifiers.count {
                 let identifier = savedIdentifiers[index]
@@ -1161,7 +1417,7 @@ struct RichTextEditor: NSViewRepresentable {
                 let wrapper = FileWrapper(regularFileWithContents: source.data)
                 wrapper.preferredFilename = "\(identifier).\(source.filenameExtension)"
                 let attachment = NSTextAttachment(fileWrapper: wrapper)
-                storage.addAttribute(.attachment, value: attachment, range: range)
+                storage.replaceCharacters(in: range, with: NSAttributedString(attachment: attachment))
             }
         }
 
@@ -1207,7 +1463,7 @@ struct RichTextEditor: NSViewRepresentable {
                 return nil
             }
 
-            let selection = textView.selectedRange()
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
             let candidateLocations: [Int]
             if selection.length == 1 {
                 candidateLocations = [selection.location]
@@ -1230,7 +1486,7 @@ struct RichTextEditor: NSViewRepresentable {
         private func selectedAttachmentLocation(in textView: NSTextView) -> Int? {
             guard let storage = textView.textStorage, storage.length > 0 else { return nil }
 
-            let selection = textView.selectedRange()
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
             let candidateLocations: [Int]
             if selection.length == 1 {
                 candidateLocations = [selection.location]
@@ -1269,10 +1525,36 @@ struct RichTextEditor: NSViewRepresentable {
             return metadata.size
         }
 
-        private func setBounds(for attachment: NSTextAttachment, imageSize: NSSize, widthFraction: Double) {
-            let width = max(textContainerWidth() * widthFraction, 1)
-            let height = width * imageSize.height / imageSize.width
-            attachment.bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        @discardableResult
+        private func setBounds(
+            for attachment: NSTextAttachment,
+            imageSize: NSSize,
+            widthFraction: Double
+        ) -> Bool {
+            let displaySize = RichTextImageLayout.displaySize(
+                for: imageSize,
+                containerWidth: textContainerWidth(),
+                widthFraction: widthFraction
+            )
+            let data = attachment.fileWrapper?.regularFileContents ?? attachment.contents
+            let image = data.flatMap(NSImage.init(data:))
+            return RichTextImageLayout.applyDisplaySize(
+                displaySize,
+                to: attachment,
+                image: image
+            )
+        }
+
+        private func normalizeSelection(in textView: NSTextView, storage: NSTextStorage) {
+            let selection = clampedRange(textView.selectedRange(), toLength: storage.length)
+            if selection != textView.selectedRange() {
+                textView.setSelectedRange(selection)
+            }
+        }
+
+        private func clampedRange(_ range: NSRange, toLength length: Int) -> NSRange {
+            let location = min(range.location, length)
+            return NSRange(location: location, length: min(range.length, length - location))
         }
 
         private func textContainerWidth() -> CGFloat {
@@ -1287,7 +1569,7 @@ struct RichTextEditor: NSViewRepresentable {
     }
 }
 
-final class WriterTextView: NSTextView {
+final class MacPastebinTextView: NSTextView {
     var selectedImageCharacterIndex: Int? {
         didSet {
             needsDisplay = true
@@ -1422,6 +1704,17 @@ final class WriterTextView: NSTextView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if let textStorage {
+            let selection = selectedRange()
+            let location = min(selection.location, textStorage.length)
+            let safeSelection = NSRange(
+                location: location,
+                length: min(selection.length, textStorage.length - location)
+            )
+            if selection != safeSelection {
+                setSelectedRange(safeSelection)
+            }
+        }
         super.draw(dirtyRect)
         NSGraphicsContext.saveGraphicsState()
 
@@ -1665,7 +1958,7 @@ final class WriterTextView: NSTextView {
 }
 
 extension NSColor {
-    static let writerPaperInk = NSColor(
+    static let macPastebinPaperInk = NSColor(
         calibratedRed: 0.035,
         green: 0.045,
         blue: 0.055,

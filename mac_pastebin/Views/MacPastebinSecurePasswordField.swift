@@ -3,7 +3,7 @@ import SwiftUI
 
 /// AppKit owns secure text input on macOS. Keeping the first-responder handoff
 /// here avoids SwiftUI focus races when the unlock screen is first presented.
-struct WriterSecurePasswordField: NSViewRepresentable {
+struct MacPastebinSecurePasswordField: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
     let accessibilityLabel: String
@@ -43,11 +43,11 @@ struct WriterSecurePasswordField: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
-        var parent: WriterSecurePasswordField
+        var parent: MacPastebinSecurePasswordField
         private var lastResetGeneration: UInt64
         private var isPerformingRepresentableUpdate = false
 
-        init(parent: WriterSecurePasswordField) {
+        init(parent: MacPastebinSecurePasswordField) {
             self.parent = parent
             lastResetGeneration = parent.resetGeneration
         }

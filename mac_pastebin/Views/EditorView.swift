@@ -13,6 +13,7 @@ struct EditorView: View {
     @State private var notePendingDeletion: VaultNote?
     @State private var isEditingTitle = false
     @State private var titleDraft = ""
+    @State private var titleEditingNoteID: String?
     @State private var fontFamilyDraft = NSFont.systemFont(ofSize: 19).familyName ?? "System Font"
     @State private var fontSizeDraft = "19"
     @StateObject private var richTextContext = RichTextEditorContext()
@@ -20,7 +21,7 @@ struct EditorView: View {
 
     var body: some View {
         ZStack {
-            VStack(spacing: WriterLayout.sectionSpacing) {
+            VStack(spacing: MacPastebinLayout.sectionSpacing) {
                 toolbar
 
                 HStack(alignment: .top, spacing: 20) {
@@ -29,8 +30,8 @@ struct EditorView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, WriterLayout.outerPadding)
-            .padding(.top, WriterLayout.outerPadding)
+            .padding(.horizontal, MacPastebinLayout.outerPadding)
+            .padding(.top, MacPastebinLayout.outerPadding)
             .padding(.bottom, 24)
         }
         .onAppear {
@@ -49,11 +50,12 @@ struct EditorView: View {
             }
         }
         .onChange(of: appState.selectedNoteID) { _, _ in
-            if !isEditingTitle {
-                titleDraft = selectedNoteTitle
-            }
-            DispatchQueue.main.async {
-                richTextContext.focusEditor()
+            commitTitleEditing()
+            titleDraft = selectedNoteTitle
+            if focusedArea != .noteList {
+                DispatchQueue.main.async {
+                    richTextContext.focusEditor()
+                }
             }
         }
         .onChange(of: richTextContext.fontFamily) { _, family in
@@ -147,6 +149,7 @@ struct EditorView: View {
 
             Button("Editor") {
                 focusedArea = .editor
+                richTextContext.focusEditor()
             }
             .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             .frame(width: 0, height: 0)
@@ -167,7 +170,7 @@ struct EditorView: View {
     private var statusPill: some View {
         Label(statusText, systemImage: "checkmark")
             .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(WriterPalette.paperInk.opacity(0.88))
+            .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.88))
             .frame(height: 48)
             .padding(.horizontal, 20)
             .puffyGlassSurface(cornerRadius: 20, tintOpacity: 0.34)
@@ -179,36 +182,38 @@ struct EditorView: View {
         } label: {
             HStack(spacing: 9) {
                 Circle()
-                    .fill(appState.isAutoSaveEnabled ? WriterPalette.sage : Color.white.opacity(0.82))
+                    .fill(appState.isAutoSaveEnabled ? MacPastebinPalette.sage : Color.white.opacity(0.82))
                     .frame(width: 18, height: 18)
                     .overlay {
                         if appState.isAutoSaveEnabled {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(WriterPalette.paperInk.opacity(0.72))
+                                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.72))
                         }
                     }
 
                 Text("Auto Save")
                     .font(.system(size: 16, weight: .medium))
             }
-            .foregroundStyle(WriterPalette.paperInk.opacity(0.84))
+            .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.84))
             .frame(height: 44)
             .padding(.horizontal, 17)
         }
         .buttonStyle(PuffyGlassButtonStyle(cornerRadius: 16, tintOpacity: 0.30))
         .help("Toggle auto save")
+        .accessibilityValue(appState.isAutoSaveEnabled ? "On" : "Off")
     }
 
     private func toolbarIconButton(systemImage: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(WriterPalette.paperInk.opacity(0.72))
+                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.72))
                 .frame(width: 46, height: 46)
         }
         .buttonStyle(PuffyGlassButtonStyle(cornerRadius: 16, tintOpacity: 0.30))
         .help(help)
+        .accessibilityLabel(help)
     }
 
     private var notesSidebar: some View {
@@ -216,7 +221,7 @@ struct EditorView: View {
             HStack(alignment: .center) {
                 Text("Notes")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(WriterPalette.paperInk.opacity(0.86))
+                    .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.86))
 
                 Spacer()
 
@@ -225,11 +230,12 @@ struct EditorView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 20, weight: .regular))
-                        .foregroundStyle(WriterPalette.paperInk.opacity(0.78))
+                        .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.78))
                         .frame(width: 46, height: 46)
                 }
                 .buttonStyle(PuffyGlassButtonStyle(cornerRadius: 15, tintOpacity: 0.30))
                 .help("New note")
+                .accessibilityLabel("New note")
             }
 
             ScrollView {
@@ -263,9 +269,9 @@ struct EditorView: View {
         .padding(.horizontal, 22)
         .padding(.top, 24)
         .padding(.bottom, 22)
-        .frame(width: WriterLayout.sidebarWidth)
+        .frame(width: MacPastebinLayout.sidebarWidth)
         .frame(maxHeight: .infinity)
-        .liquidGlassSurface(cornerRadius: WriterLayout.panelRadius, tintOpacity: 0.26)
+        .liquidGlassSurface(cornerRadius: MacPastebinLayout.panelRadius, tintOpacity: 0.26)
     }
 
     private func noteRow(for note: VaultNote) -> some View {
@@ -274,12 +280,12 @@ struct EditorView: View {
         return HStack(spacing: 12) {
             Image(systemName: "doc")
                 .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(WriterPalette.paperInk.opacity(isSelected ? 0.78 : 0.62))
+                .foregroundStyle(MacPastebinPalette.paperInk.opacity(isSelected ? 0.78 : 0.62))
                 .frame(width: 22)
 
             Text(note.title)
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(WriterPalette.paperInk.opacity(0.88))
+                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.88))
                 .lineLimit(1)
 
             Spacer(minLength: 0)
@@ -293,7 +299,7 @@ struct EditorView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.clear)
                     .glassEffect(
-                        .regular.tint(WriterPalette.glassTintElevated.opacity(0.36)),
+                        .regular.tint(MacPastebinPalette.glassTintElevated.opacity(0.36)),
                         in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                     )
                     .overlay {
@@ -319,7 +325,7 @@ struct EditorView: View {
 
                 Text(wordCountLabel)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(WriterPalette.paperInk.opacity(0.70))
+                    .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.70))
             }
             .padding(.horizontal, 26)
             .frame(height: 78)
@@ -328,7 +334,7 @@ struct EditorView: View {
 
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(WriterPalette.paper)
+                    .fill(MacPastebinPalette.paper)
                     .overlay {
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.58), lineWidth: 1)
@@ -355,7 +361,7 @@ struct EditorView: View {
             .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .liquidGlassSurface(cornerRadius: WriterLayout.panelRadius, tintOpacity: 0.28)
+        .liquidGlassSurface(cornerRadius: MacPastebinLayout.panelRadius, tintOpacity: 0.28)
     }
 
     private var formattingToolbar: some View {
@@ -472,10 +478,10 @@ struct EditorView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(WriterPalette.paperInk.opacity(0.78))
+                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.78))
                 .frame(width: 34, height: 34)
                 .background(
-                    isActive ? WriterPalette.sage.opacity(0.55) : Color.clear,
+                    isActive ? MacPastebinPalette.sage.opacity(0.55) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                 )
                 .contentShape(Rectangle())
@@ -492,8 +498,8 @@ struct EditorView: View {
             TextField("Title", text: $titleDraft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(WriterPalette.paperInk.opacity(0.92))
-                .tint(WriterPalette.paperInk.opacity(0.78))
+                .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.92))
+                .tint(MacPastebinPalette.paperInk.opacity(0.78))
                 .focused($focusedArea, equals: .title)
                 .onSubmit(commitTitleEditing)
                 .frame(minWidth: 220)
@@ -504,12 +510,12 @@ struct EditorView: View {
                 HStack(spacing: 8) {
                     Text(selectedNoteTitle)
                         .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(WriterPalette.paperInk.opacity(0.92))
+                        .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.92))
                         .lineLimit(1)
 
                     Image(systemName: "pencil")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(WriterPalette.paperInk.opacity(0.50))
+                        .foregroundStyle(MacPastebinPalette.paperInk.opacity(0.50))
                 }
                 .contentShape(Rectangle())
             }
@@ -540,6 +546,7 @@ struct EditorView: View {
 
     private func beginTitleEditing() {
         titleDraft = selectedNoteTitle
+        titleEditingNoteID = appState.selectedNoteID
         isEditingTitle = true
         focusedArea = .title
     }
@@ -551,11 +558,11 @@ struct EditorView: View {
 
         isEditingTitle = false
 
-        guard let selectedNoteID = appState.selectedNoteID else {
+        guard let noteID = titleEditingNoteID else {
             return
         }
-
-        appState.renameNote(id: selectedNoteID, title: titleDraft)
+        titleEditingNoteID = nil
+        appState.renameNote(id: noteID, title: titleDraft)
         titleDraft = selectedNoteTitle
     }
 
@@ -718,7 +725,7 @@ private struct HoverColorPicker: View {
     @State private var hoveredID: String?
 
     private let choices = [
-        Choice(id: "ink", name: "Ink", color: .writerPaperInk),
+        Choice(id: "ink", name: "Ink", color: .macPastebinPaperInk),
         Choice(id: "black", name: "Black", color: .black),
         Choice(id: "gray", name: "Gray", color: .systemGray),
         Choice(id: "red", name: "Red", color: .systemRed),

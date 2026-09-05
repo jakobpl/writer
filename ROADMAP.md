@@ -1,4 +1,4 @@
-# Writer roadmap
+# mac_pastebin roadmap
 
 These initiatives are intentionally deferred. They are design notes, not commitments or partially implemented features. The [README](README.md) describes what the app supports today.
 

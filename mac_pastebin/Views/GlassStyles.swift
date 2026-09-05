@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum WriterPalette {
+enum MacPastebinPalette {
     static let shell = Color(red: 0.020, green: 0.090, blue: 0.145)
     static let glassTint = Color(white: 0.97)
     static let glassTintElevated = Color.white
@@ -13,7 +13,7 @@ enum WriterPalette {
     static let innerHighlight = Color.white.opacity(0.46)
 }
 
-enum WriterLayout {
+enum MacPastebinLayout {
     static let panelRadius: CGFloat = 22
     static let controlRadius: CGFloat = 16
     static let outerPadding: CGFloat = 28
@@ -21,7 +21,7 @@ enum WriterLayout {
     static let sidebarWidth: CGFloat = 350
 }
 
-struct WriterBackdrop: View {
+struct MacPastebinBackdrop: View {
     var body: some View {
         ZStack {
             Rectangle()
@@ -53,13 +53,13 @@ struct GlassPanel: ViewModifier {
     }
 }
 
-struct WriterButtonStyle: ButtonStyle {
+struct MacPastebinButtonStyle: ButtonStyle {
     var isProminent = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.callout.weight(.medium))
-            .foregroundStyle(isProminent ? WriterPalette.shell : Color.white.opacity(0.82))
+            .foregroundStyle(isProminent ? MacPastebinPalette.shell : Color.white.opacity(0.82))
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .frame(minHeight: 30)
@@ -67,14 +67,14 @@ struct WriterButtonStyle: ButtonStyle {
             .background(buttonFill(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(isProminent ? WriterPalette.sage.opacity(0.40) : Color.white.opacity(0.22), lineWidth: 1)
+                    .strokeBorder(isProminent ? MacPastebinPalette.sage.opacity(0.40) : Color.white.opacity(0.22), lineWidth: 1)
             }
             .shadow(color: .black.opacity(isProminent ? 0.18 : 0.10), radius: isProminent ? 10 : 6, x: 0, y: 5)
     }
 
     private func buttonFill(isPressed: Bool) -> Color {
         if isProminent {
-            return WriterPalette.sage.opacity(isPressed ? 0.74 : 0.92)
+            return MacPastebinPalette.sage.opacity(isPressed ? 0.74 : 0.92)
         }
 
         return Color.white.opacity(isPressed ? 0.20 : 0.11)
@@ -120,20 +120,20 @@ extension View {
         )
     }
 
-    func writerControlChrome(cornerRadius: CGFloat = 8) -> some View {
+    func macPastebinControlChrome(cornerRadius: CGFloat = 8) -> some View {
         background(Color.white.opacity(0.18), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(WriterPalette.hairline, lineWidth: 1)
+                    .strokeBorder(MacPastebinPalette.hairline, lineWidth: 1)
             }
     }
 
-    func writerInputChrome(cornerRadius: CGFloat = 14) -> some View {
+    func macPastebinInputChrome(cornerRadius: CGFloat = 14) -> some View {
         background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.clear)
                     .glassEffect(
-                        .regular.tint(WriterPalette.glassTintElevated.opacity(0.24)),
+                        .regular.tint(MacPastebinPalette.glassTintElevated.opacity(0.24)),
                         in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     )
                     .overlay {
@@ -152,7 +152,7 @@ extension View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(.clear)
                 .glassEffect(
-                    .regular.tint(WriterPalette.glassTint.opacity(tintOpacity)),
+                    .regular.tint(MacPastebinPalette.glassTint.opacity(tintOpacity)),
                     in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 )
                 .overlay {
@@ -161,7 +161,7 @@ extension View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(WriterPalette.glassTintElevated.opacity(tintOpacity * 0.18))
+                        .fill(MacPastebinPalette.glassTintElevated.opacity(tintOpacity * 0.18))
                 }
         }
             .overlay {
@@ -170,7 +170,7 @@ extension View {
             }
             .overlay(alignment: .top) {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(WriterPalette.innerHighlight, lineWidth: 1)
+                    .strokeBorder(MacPastebinPalette.innerHighlight, lineWidth: 1)
                     .blendMode(.plusLighter)
                     .padding(1)
             }
@@ -183,7 +183,7 @@ extension View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(.clear)
                 .glassEffect(
-                    .regular.tint(WriterPalette.glassTintElevated.opacity(tintOpacity)),
+                    .regular.tint(MacPastebinPalette.glassTintElevated.opacity(tintOpacity)),
                     in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 )
                 .overlay {
@@ -206,7 +206,7 @@ extension View {
 
     func liquidPaperSurface(cornerRadius: CGFloat = 18) -> some View {
         background(
-            WriterPalette.paper,
+            MacPastebinPalette.paper,
             in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
         .overlay {

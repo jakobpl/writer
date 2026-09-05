@@ -25,6 +25,9 @@ final class AppState: ObservableObject {
 
     private let vaultService: VaultService
     private var derivedKey: SymmetricKey?
+    // A failed disk write must not destroy edits or keep plaintext unlocked.
+    // This snapshot uses the vault key, which is discarded on lock as usual.
+    private var pendingRecovery: EncryptedPayload?
     private var autoSaveTask: Task<Void, Never>?
     private var hasUnsavedChanges = false
     private var copiedPasteboardChangeCount: Int?
@@ -48,9 +51,23 @@ final class AppState: ObservableObject {
         autoSaveTask = nil
 
         if lockState == .unlocked, hasUnsavedChanges {
-            saveCurrentPayload()
+            if !saveCurrentPayload() {
+                do {
+                    guard let derivedKey else { return }
+                    let data = try PropertyListEncoder().encode(currentPayload())
+                    // Ensure recovery is decodable before clearing the live document.
+                    _ = try PropertyListDecoder().decode(VaultPayload.self, from: data)
+                    pendingRecovery = try CryptoService().encrypt(data, using: derivedKey)
+                } catch {
+                    editorStatusMessage = "Could not safely lock. Save your changes and try again."
+                    return
+                }
+            }
         }
 
+        if pendingRecovery != nil {
+            authenticationErrorMessage = "Changes could not be saved. Keep this app open, then unlock to recover them."
+        }
         if Self.clearClipboardOnLock {
             clearSensitivePasteboardIfUnchanged()
         }
@@ -89,9 +106,16 @@ final class AppState: ObservableObject {
             }
 
             derivedKey = unlockResult.key
-            loadPayloadIntoMemory(unlockResult.payload)
-            hasUnsavedChanges = false
-            editorStatusMessage = nil
+            if let pendingRecovery {
+                let data = try CryptoService().decrypt(pendingRecovery, using: unlockResult.key)
+                loadPayloadIntoMemory(try PropertyListDecoder().decode(VaultPayload.self, from: data))
+                hasUnsavedChanges = true
+                editorStatusMessage = "Recovered unsaved changes. Save again."
+            } else {
+                loadPayloadIntoMemory(unlockResult.payload)
+                hasUnsavedChanges = false
+                editorStatusMessage = nil
+            }
             lockState = .unlocked
             refreshVaultStatus()
         } catch {
@@ -106,6 +130,10 @@ final class AppState: ObservableObject {
     }
 
     func replaceCorruptedVaultAfterConfirmation() {
+        guard pendingRecovery == nil else {
+            authenticationErrorMessage = "Unlock and save recovered changes before changing vaults."
+            return
+        }
         derivedKey = nil
         notes = []
         selectedNoteID = nil
@@ -125,6 +153,10 @@ final class AppState: ObservableObject {
     }
 
     func startNewVaultAfterForgettingPassword() {
+        guard pendingRecovery == nil else {
+            authenticationErrorMessage = "Unlock and save recovered changes before changing vaults."
+            return
+        }
         derivedKey = nil
         notes = []
         selectedNoteID = nil
@@ -144,6 +176,10 @@ final class AppState: ObservableObject {
     }
 
     func restoreArchivedVault(id: String) {
+        guard pendingRecovery == nil else {
+            authenticationErrorMessage = "Unlock and save recovered changes before changing vaults."
+            return
+        }
         derivedKey = nil
         notes = []
         selectedNoteID = nil
@@ -163,6 +199,10 @@ final class AppState: ObservableObject {
     }
 
     func deleteArchivedVault(id: String) {
+        guard pendingRecovery == nil else {
+            authenticationErrorMessage = "Unlock and save recovered changes before changing vaults."
+            return
+        }
         derivedKey = nil
         notes = []
         selectedNoteID = nil
@@ -209,13 +249,23 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func saveCurrentPayload() {
+    /// Called before termination so a failed save can cancel quitting.
+    func prepareToQuit() -> Bool {
+        endActiveTextInputSessions()
+        if isLocked {
+            return pendingRecovery == nil
+        }
+        return !hasUnsavedChanges || saveCurrentPayload()
+    }
+
+    @discardableResult
+    private func saveCurrentPayload() -> Bool {
         autoSaveTask?.cancel()
         autoSaveTask = nil
 
         guard let derivedKey else {
             editorStatusMessage = "Save failed."
-            return
+            return false
         }
 
         editorStatusMessage = "Saving..."
@@ -223,10 +273,15 @@ final class AppState: ObservableObject {
         do {
             try vaultService.savePayload(currentPayload(), using: derivedKey)
             hasUnsavedChanges = false
+            pendingRecovery = nil
             editorStatusMessage = "Saved."
+            return true
+        } catch VaultService.VaultServiceError.invalidVault {
+            editorStatusMessage = "Save failed: vault is too large."
         } catch {
             editorStatusMessage = "Save failed."
         }
+        return false
     }
 
     var selectedNoteBody: String {
@@ -266,6 +321,14 @@ final class AppState: ObservableObject {
             return
         }
 
+        let previousContent = notes[selectedNoteIndex].richContent
+        let isLegacyStorageCompaction = notes[selectedNoteIndex].body == body
+            && previousContent.map { VaultRichTextDocument.isLegacyRTFD($0.rtfdData) } == true
+            && !VaultRichTextDocument.isLegacyRTFD(richContent.rtfdData)
+            && previousContent?.imageAttachmentIDs == richContent.imageAttachmentIDs
+            && previousContent?.imageDisplayWidths == richContent.imageDisplayWidths
+            && previousContent?.imageSources == richContent.imageSources
+
         notes[selectedNoteIndex].body = body
         notes[selectedNoteIndex].richContent = richContent
         if !notes[selectedNoteIndex].isTitleFinalized,
@@ -273,8 +336,10 @@ final class AppState: ObservableObject {
             notes[selectedNoteIndex].title = title
             notes[selectedNoteIndex].isTitleFinalized = true
         }
-        notes[selectedNoteIndex].updatedAt = Date()
-        sortNotesByRecency()
+        if !isLegacyStorageCompaction {
+            notes[selectedNoteIndex].updatedAt = Date()
+            sortNotesByRecency()
+        }
         markPayloadChanged()
     }
 
@@ -322,6 +387,11 @@ final class AppState: ObservableObject {
     }
 
     func createNote() {
+        guard !isLocked else { return }
+        guard notes.count < VaultResourcePolicy.maximumNoteCount else {
+            editorStatusMessage = "Note limit reached."
+            return
+        }
         let now = Date()
         let note = VaultNote(
             id: UUID().uuidString,

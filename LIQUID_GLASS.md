@@ -1,12 +1,12 @@
 # Liquid Glass implementation notes
 
-Writer targets macOS 26 and uses native SwiftUI Liquid Glass APIs. Start with Apple's documentation:
+mac_pastebin targets macOS 26 and uses native SwiftUI Liquid Glass APIs. Start with Apple's documentation:
 
 - [Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass)
 - [Applying Liquid Glass to custom views](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views)
 - [Build a SwiftUI app with the new design](https://developer.apple.com/videos/play/wwdc2025/323/)
 
-## Notes from Writer's UI iteration
+## Notes from mac_pastebin's UI iteration
 
 - Use native SwiftUI `glassEffect(_:in:)` for custom glass surfaces when targeting macOS 26+.
 - Prefer applying glass to a small number of meaningful containers: tool islands, sidebars, lock cards, and key controls.

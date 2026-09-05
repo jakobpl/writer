@@ -4,7 +4,7 @@ import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 import XCTest
-@testable import writer
+@testable import mac_pastebin
 
 @MainActor
 final class SecurityRegressionTests: XCTestCase {
@@ -124,12 +124,57 @@ final class SecurityRegressionTests: XCTestCase {
         XCTAssertThrowsError(try VaultResourcePolicy.imageMetadata(for: animatedGIF))
     }
 
+    func testImageOptimizationAcceptsSmallImagesWithoutUpscaling() throws {
+        for dimension in [1, 4, 256, 319, 320] {
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: dimension, pixelsHigh: dimension,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: dimension * 4, bitsPerPixel: 32
+            ))
+            let input = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            let result = try ImageOptimizationService.optimizeImageData(input)
+            XCTAssertEqual(result.width, dimension)
+            XCTAssertEqual(result.height, dimension)
+            XCTAssertLessThanOrEqual(result.data.count, ImageOptimizationService.maximumStoredBytes)
+            XCTAssertNoThrow(try VaultResourcePolicy.imageMetadata(for: result.data))
+        }
+    }
+
+    func testImageOptimizationDownsamplesAndCapsStoredData() throws {
+        let representation = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: 2_400,
+                pixelsHigh: 1_600,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 2_400 * 4,
+                bitsPerPixel: 32
+            )
+        )
+        let input = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+
+        let optimized = try ImageOptimizationService.optimizeImageData(input)
+
+        XCTAssertLessThanOrEqual(
+            max(optimized.width, optimized.height),
+            ImageOptimizationService.maximumPixelDimension
+        )
+        XCTAssertLessThanOrEqual(optimized.data.count, ImageOptimizationService.maximumStoredBytes)
+        XCTAssertEqual(optimized.typeIdentifier, UTType.png.identifier)
+        XCTAssertEqual(optimized.filenameExtension, "png")
+        XCTAssertNoThrow(try VaultResourcePolicy.imageMetadata(for: optimized.data))
+    }
+
     func testImageFileSizeIsRejectedBeforeReading() throws {
         let directory = makeTemporaryDirectory()
         let imageURL = directory.appendingPathComponent("oversized.png")
         XCTAssertTrue(FileManager.default.createFile(atPath: imageURL.path, contents: Data()))
         let handle = try FileHandle(forWritingTo: imageURL)
-        try handle.truncate(atOffset: UInt64(VaultResourcePolicy.maximumImageBytes + 1))
+        try handle.truncate(atOffset: UInt64(ImageOptimizationService.maximumImportBytes + 1))
         try handle.close()
 
         XCTAssertThrowsError(try VaultResourcePolicy.validatedImageFileSize(at: imageURL))
@@ -145,7 +190,7 @@ final class SecurityRegressionTests: XCTestCase {
     }
 
     func testSecureFieldConsumesEachCredentialResetOnlyOnce() {
-        let field = WriterSecurePasswordField(
+        let field = MacPastebinSecurePasswordField(
             text: .constant("secret"),
             placeholder: "Password",
             accessibilityLabel: "Password",
@@ -163,7 +208,7 @@ final class SecurityRegressionTests: XCTestCase {
     func testSecureFieldDoesNotPublishDuringRepresentableUpdates() {
         var text = "secret"
         var publicationCount = 0
-        let field = WriterSecurePasswordField(
+        let field = MacPastebinSecurePasswordField(
             text: Binding(
                 get: { text },
                 set: {
@@ -230,7 +275,7 @@ final class SecurityRegressionTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
-        let textView = WriterTextView(frame: window.contentView?.bounds ?? .zero)
+        let textView = MacPastebinTextView(frame: window.contentView?.bounds ?? .zero)
         window.contentView = textView
         XCTAssertTrue(window.makeFirstResponder(textView))
 
@@ -247,7 +292,7 @@ final class SecurityRegressionTests: XCTestCase {
             defer: false
         )
         let rootView = NSView(frame: window.contentView?.bounds ?? .zero)
-        let staleEditor = WriterTextView(frame: rootView.bounds)
+        let staleEditor = MacPastebinTextView(frame: rootView.bounds)
         let passwordContainer = SecurePasswordContainer(frame: rootView.bounds)
         rootView.addSubview(staleEditor)
         rootView.addSubview(passwordContainer)
@@ -278,7 +323,7 @@ final class SecurityRegressionTests: XCTestCase {
 
     private func makeTemporaryDirectory() -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("WriterSecurityTests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("MacPastebinSecurityTests-\(UUID().uuidString)", isDirectory: true)
         try! FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true

@@ -14,3 +14,17 @@ xcuserdata/
 Packages/
 .DS_Store
 Config/Local.xcconfig
+
+# Private vaults and credentials
+vault.*
+*.mac_pastebin
+*.writer
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.key
+*.pem
+*.mobileprovision
+*.provisionprofile

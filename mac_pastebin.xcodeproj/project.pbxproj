@@ -12,25 +12,25 @@
 			containerPortal = 092BAE6B2FEAD39900B3C5B8 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 092BAE722FEAD39900B3C5B8;
-			remoteInfo = writer;
+			remoteInfo = mac_pastebin;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		092BAE732FEAD39900B3C5B8 /* writer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = writer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		092BAE732FEAD39900B3C5B8 /* mac_pastebin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mac_pastebin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60718293A4B5C /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
-		B10000000000000000000001 /* writerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = writerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000001 /* mac_pastebinTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mac_pastebinTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		092BAE752FEAD39900B3C5B8 /* writer */ = {
+		092BAE752FEAD39900B3C5B8 /* mac_pastebin */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = writer;
+			path = mac_pastebin;
 			sourceTree = "<group>";
 		};
-		B10000000000000000000002 /* writerTests */ = {
+		B10000000000000000000002 /* mac_pastebinTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = writerTests;
+			path = mac_pastebinTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -57,8 +57,8 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60718293A4B5D /* Config */,
-				092BAE752FEAD39900B3C5B8 /* writer */,
-				B10000000000000000000002 /* writerTests */,
+				092BAE752FEAD39900B3C5B8 /* mac_pastebin */,
+				B10000000000000000000002 /* mac_pastebinTests */,
 				092BAE742FEAD39900B3C5B8 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -66,8 +66,8 @@
 		092BAE742FEAD39900B3C5B8 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				092BAE732FEAD39900B3C5B8 /* writer.app */,
-				B10000000000000000000001 /* writerTests.xctest */,
+				092BAE732FEAD39900B3C5B8 /* mac_pastebin.app */,
+				B10000000000000000000001 /* mac_pastebinTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,9 +83,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		092BAE722FEAD39900B3C5B8 /* writer */ = {
+		092BAE722FEAD39900B3C5B8 /* mac_pastebin */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 092BAE7E2FEAD39A00B3C5B8 /* Build configuration list for PBXNativeTarget "writer" */;
+			buildConfigurationList = 092BAE7E2FEAD39A00B3C5B8 /* Build configuration list for PBXNativeTarget "mac_pastebin" */;
 			buildPhases = (
 				092BAE6F2FEAD39900B3C5B8 /* Sources */,
 				092BAE702FEAD39900B3C5B8 /* Frameworks */,
@@ -96,18 +96,18 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				092BAE752FEAD39900B3C5B8 /* writer */,
+				092BAE752FEAD39900B3C5B8 /* mac_pastebin */,
 			);
-			name = writer;
+			name = mac_pastebin;
 			packageProductDependencies = (
 			);
-			productName = writer;
-			productReference = 092BAE732FEAD39900B3C5B8 /* writer.app */;
+			productName = mac_pastebin;
+			productReference = 092BAE732FEAD39900B3C5B8 /* mac_pastebin.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B10000000000000000000008 /* writerTests */ = {
+		B10000000000000000000008 /* mac_pastebinTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B1000000000000000000000B /* Build configuration list for PBXNativeTarget "writerTests" */;
+			buildConfigurationList = B1000000000000000000000B /* Build configuration list for PBXNativeTarget "mac_pastebinTests" */;
 			buildPhases = (
 				B10000000000000000000005 /* Sources */,
 				B10000000000000000000003 /* Frameworks */,
@@ -119,13 +119,13 @@
 				B10000000000000000000007 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				B10000000000000000000002 /* writerTests */,
+				B10000000000000000000002 /* mac_pastebinTests */,
 			);
-			name = writerTests;
+			name = mac_pastebinTests;
 			packageProductDependencies = (
 			);
-			productName = writerTests;
-			productReference = B10000000000000000000001 /* writerTests.xctest */;
+			productName = mac_pastebinTests;
+			productReference = B10000000000000000000001 /* mac_pastebinTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -147,7 +147,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 092BAE6E2FEAD39900B3C5B8 /* Build configuration list for PBXProject "writer" */;
+			buildConfigurationList = 092BAE6E2FEAD39900B3C5B8 /* Build configuration list for PBXProject "mac_pastebin" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -161,8 +161,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				092BAE722FEAD39900B3C5B8 /* writer */,
-				B10000000000000000000008 /* writerTests */,
+				092BAE722FEAD39900B3C5B8 /* mac_pastebin */,
+				B10000000000000000000008 /* mac_pastebinTests */,
 			);
 		};
 /* End PBXProject section */
@@ -204,7 +204,7 @@
 /* Begin PBXTargetDependency section */
 		B10000000000000000000007 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 092BAE722FEAD39900B3C5B8 /* writer */;
+			target = 092BAE722FEAD39900B3C5B8 /* mac_pastebin */;
 			targetProxy = B10000000000000000000006 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -338,7 +338,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -349,8 +349,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = j.writer;
+				MARKETING_VERSION = 1.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "j.mac-pastebin";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -370,7 +370,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -381,8 +381,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = j.writer;
+				MARKETING_VERSION = 1.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "j.mac-pastebin";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -402,11 +402,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
-				PRODUCT_BUNDLE_IDENTIFIER = j.writerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "j.mac-pastebinTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/writer.app/Contents/MacOS/writer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mac_pastebin.app/Contents/MacOS/mac_pastebin";
 			};
 			name = Debug;
 		};
@@ -418,18 +418,18 @@
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
-				PRODUCT_BUNDLE_IDENTIFIER = j.writerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "j.mac-pastebinTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/writer.app/Contents/MacOS/writer";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mac_pastebin.app/Contents/MacOS/mac_pastebin";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		092BAE6E2FEAD39900B3C5B8 /* Build configuration list for PBXProject "writer" */ = {
+		092BAE6E2FEAD39900B3C5B8 /* Build configuration list for PBXProject "mac_pastebin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				092BAE7C2FEAD39A00B3C5B8 /* Debug */,
@@ -438,7 +438,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		092BAE7E2FEAD39A00B3C5B8 /* Build configuration list for PBXNativeTarget "writer" */ = {
+		092BAE7E2FEAD39A00B3C5B8 /* Build configuration list for PBXNativeTarget "mac_pastebin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				092BAE7F2FEAD39A00B3C5B8 /* Debug */,
@@ -447,7 +447,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B1000000000000000000000B /* Build configuration list for PBXNativeTarget "writerTests" */ = {
+		B1000000000000000000000B /* Build configuration list for PBXNativeTarget "mac_pastebinTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B10000000000000000000009 /* Debug */,

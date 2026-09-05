@@ -22,8 +22,8 @@ Phase 4 — Liquid Glass UI Design Phase
   - keeps the existing manual lock path unchanged
 - Phase 1B basic local vault structure added:
   - VaultService owns Application Support vault paths
-  - app-specific Writer folder is created when needed
-  - empty vault.writer placeholder file is created when needed
+  - app-specific mac_pastebin folder is created when needed
+  - empty vault.mac_pastebin placeholder file is created when needed
   - placeholder load path checks for the file without storing note contents
 - Phase 1C CryptoService added:
   - uses CryptoKit AES.GCM
@@ -123,13 +123,13 @@ Phase 4 — Liquid Glass UI Design Phase
   - locked screen lists preserved `.archived` vault files
   - archived vault entries show file name and size only, without decrypting contents
   - Restore moves the current active vault aside as a new archive
-  - Restore moves the selected archived vault back to `vault.writer`
+  - Restore moves the selected archived vault back to `vault.mac_pastebin`
   - after restoring, the user unlocks with that vault's password
 - Phase 2J archived vault delete added:
   - archived vault entries now include a Delete action
   - Delete requires a confirmation alert that names the archived vault file
-  - deleting removes only selected `vault.writer.archived.*` files
-  - active `vault.writer` and `.corrupt` files are not deleted by this flow
+  - deleting removes only selected `vault.mac_pastebin.archived.*` files
+  - active `vault.mac_pastebin` and `.corrupt` files are not deleted by this flow
 - Phase 2K copy selected note text added:
   - editor toolbar includes a copy icon button
   - copy action writes the currently selected note body to the macOS pasteboard
